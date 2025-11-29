@@ -15,10 +15,10 @@ from datetime import datetime
 import os
 
 
-def inject_dify_chatbot():
-    """注入 Dify 聊天机器人到页面 - 可拖动版本"""
-    # 注入可拖动的聊天机器人容器
-    dify_chatbot_html = """
+def inject_coze_chatbot():
+    """注入 Coze 聊天机器人到页面 - 使用 Coze 官方 WebSDK"""
+    # 使用 Coze 官方 WebSDK 嵌���
+    coze_chatbot_html = """
     <!DOCTYPE html>
     <html>
     <head>
@@ -31,188 +31,33 @@ def inject_dify_chatbot():
                 width: 100%;
                 height: 100%;
             }
-
-            /* 可拖动容器 */
-            #draggable-container {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                z-index: 99999;
-                cursor: move;
-            }
-
-            /* 拖动手柄 - 仅在气泡按钮上 */
-            #drag-handle {
-                position: absolute;
-                bottom: 0;
-                right: 0;
-                width: 50px;
-                height: 50px;
-                cursor: move;
-                z-index: 100001;
-                border-radius: 50%;
-            }
-
-            #dify-chatbot-bubble-button {
-                background-color: #2E8B57 !important;
-            }
-
-            #dify-chatbot-bubble-window {
-                width: 380px !important;
-                height: 600px !important;
-                position: absolute !important;
-                bottom: 60px !important;
-                right: 0px !important;
-            }
-
-            /* 拖动时的视觉反馈 */
-            #draggable-container.dragging {
-                opacity: 0.8;
-            }
-
-            #draggable-container.dragging #drag-handle {
-                cursor: grabbing;
-            }
         </style>
     </head>
     <body>
-        <div id="draggable-container">
-            <div id="drag-handle" title="拖动移动位置"></div>
-            <script>
-                window.difyChatbotConfig = {
-                    token: 'IOIInXpjfTWRtK8M',
-                    baseUrl: 'http://localhost',
-                    inputs: {},
-                    systemVariables: {},
-                    userVariables: {},
-                };
-            </script>
-            <script src="http://localhost/embed.min.js" id="IOIInXpjfTWRtK8M"></script>
-        </div>
-
+        <!-- Coze 官方 WebSDK -->
+        <script src="https://lf-cdn.coze.cn/obj/unpkg/flow-platform/chat-app-sdk/1.2.0-beta.19/libs/cn/index.js"></script>
         <script>
-            (function() {
-                const container = document.getElementById('draggable-container');
-                const handle = document.getElementById('drag-handle');
-
-                let isDragging = false;
-                let startX, startY;
-                let startRight, startBottom;
-
-                // 从localStorage恢复位置
-                const savedPos = localStorage.getItem('dify-chatbot-position');
-                if (savedPos) {
-                    const pos = JSON.parse(savedPos);
-                    container.style.right = pos.right + 'px';
-                    container.style.bottom = pos.bottom + 'px';
+            new CozeWebSDK.WebChatClient({
+                config: {
+                    bot_id: '7578098968145100834',
+                },
+                componentProps: {
+                    title: '智能助手',
+                },
+                auth: {
+                    type: 'token',
+                    token: 'pat_1SoLFxXchERCiFAktfLsybEwHUUrz6OtZVWlJemZawCDCIC0vI6BkFruhrKKQEC1',
+                    onRefreshToken: function () {
+                        return 'pat_1SoLFxXchERCiFAktfLsybEwHUUrz6OtZVWlJemZawCDCIC0vI6BkFruhrKKQEC1'
+                    }
                 }
-
-                handle.addEventListener('mousedown', function(e) {
-                    isDragging = true;
-                    container.classList.add('dragging');
-
-                    startX = e.clientX;
-                    startY = e.clientY;
-
-                    const rect = container.getBoundingClientRect();
-                    const parentRect = document.body.getBoundingClientRect();
-                    startRight = parentRect.right - rect.right;
-                    startBottom = parentRect.bottom - rect.bottom;
-
-                    e.preventDefault();
-                    e.stopPropagation();
-                });
-
-                document.addEventListener('mousemove', function(e) {
-                    if (!isDragging) return;
-
-                    const deltaX = startX - e.clientX;
-                    const deltaY = startY - e.clientY;
-
-                    let newRight = startRight + deltaX;
-                    let newBottom = startBottom + deltaY;
-
-                    // 边界检查
-                    const maxRight = window.innerWidth - 60;
-                    const maxBottom = window.innerHeight - 60;
-
-                    newRight = Math.max(0, Math.min(newRight, maxRight));
-                    newBottom = Math.max(0, Math.min(newBottom, maxBottom));
-
-                    container.style.right = newRight + 'px';
-                    container.style.bottom = newBottom + 'px';
-                });
-
-                document.addEventListener('mouseup', function(e) {
-                    if (isDragging) {
-                        isDragging = false;
-                        container.classList.remove('dragging');
-
-                        // 保存位置到localStorage
-                        const pos = {
-                            right: parseInt(container.style.right) || 20,
-                            bottom: parseInt(container.style.bottom) || 20
-                        };
-                        localStorage.setItem('dify-chatbot-position', JSON.stringify(pos));
-                    }
-                });
-
-                // 触摸设备支持
-                handle.addEventListener('touchstart', function(e) {
-                    const touch = e.touches[0];
-                    isDragging = true;
-                    container.classList.add('dragging');
-
-                    startX = touch.clientX;
-                    startY = touch.clientY;
-
-                    const rect = container.getBoundingClientRect();
-                    const parentRect = document.body.getBoundingClientRect();
-                    startRight = parentRect.right - rect.right;
-                    startBottom = parentRect.bottom - rect.bottom;
-
-                    e.preventDefault();
-                }, {passive: false});
-
-                document.addEventListener('touchmove', function(e) {
-                    if (!isDragging) return;
-
-                    const touch = e.touches[0];
-                    const deltaX = startX - touch.clientX;
-                    const deltaY = startY - touch.clientY;
-
-                    let newRight = startRight + deltaX;
-                    let newBottom = startBottom + deltaY;
-
-                    const maxRight = window.innerWidth - 60;
-                    const maxBottom = window.innerHeight - 60;
-
-                    newRight = Math.max(0, Math.min(newRight, maxRight));
-                    newBottom = Math.max(0, Math.min(newBottom, maxBottom));
-
-                    container.style.right = newRight + 'px';
-                    container.style.bottom = newBottom + 'px';
-                }, {passive: false});
-
-                document.addEventListener('touchend', function(e) {
-                    if (isDragging) {
-                        isDragging = false;
-                        container.classList.remove('dragging');
-
-                        const pos = {
-                            right: parseInt(container.style.right) || 20,
-                            bottom: parseInt(container.style.bottom) || 20
-                        };
-                        localStorage.setItem('dify-chatbot-position', JSON.stringify(pos));
-                    }
-                });
-            })();
+            });
         </script>
     </body>
     </html>
     """
 
-    # CSS让iframe全屏覆盖但透明，这样拖动不受限制
+    # CSS让iframe覆盖页面
     st.markdown("""
     <style>
         div[data-testid="stHtml"]:last-of-type {
@@ -241,7 +86,7 @@ def inject_dify_chatbot():
     </style>
     """, unsafe_allow_html=True)
 
-    components.html(dify_chatbot_html, height=800, width=800, scrolling=False)
+    components.html(coze_chatbot_html, height=800, width=800, scrolling=False)
 
 SIMPLEX_TABLEAU_HTML = """
 <div style="margin-top:0.5rem;">
@@ -1160,7 +1005,7 @@ def main():
             </div>
             """, unsafe_allow_html=True)
             # 注入 Dify 聊天机器人
-            inject_dify_chatbot()
+            inject_coze_chatbot()
             return
 
     # 主页面内容
@@ -1184,7 +1029,7 @@ def main():
     """, unsafe_allow_html=True)
 
     # 注入 Dify 聊天机器人（放在页面最后）
-    inject_dify_chatbot()
+    inject_coze_chatbot()
 
 if __name__ == "__main__":
     main()
