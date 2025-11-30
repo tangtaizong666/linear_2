@@ -472,6 +472,10 @@ def train_transformer_with_progress(df, epochs, batch_size, learning_rate):
     from transformer_model import SalesForecasterEncoderOnly
     from sales_data_processor import SalesDataProcessor, create_data_loaders
 
+    # 获取基础目录路径
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, 'data')
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 创建进度显示区域
@@ -488,8 +492,8 @@ def train_transformer_with_progress(df, epochs, batch_size, learning_rate):
         status_text.info("🔄 准备数据中...")
 
         # 保存原始数据
-        os.makedirs('./data', exist_ok=True)
-        df.to_csv('./data/sales_data.csv', index=False, encoding='utf-8-sig')
+        os.makedirs(data_dir, exist_ok=True)
+        df.to_csv(os.path.join(data_dir, 'sales_data.csv'), index=False, encoding='utf-8-sig')
 
         # 提取销售数据
         beverage_cols = ['碳酸饮料', '果汁饮料', '茶饮料', '功能饮料', '矿泉水']
@@ -498,7 +502,7 @@ def train_transformer_with_progress(df, epochs, batch_size, learning_rate):
         # 数据预处理
         processor = SalesDataProcessor()
         normalized_data = processor.fit_transform(sales_values)
-        processor.save_scaler('./data/scaler_params.npz')
+        processor.save_scaler(os.path.join(data_dir, 'scaler_params.npz'))
 
         # 创建数据加载器
         train_loader, val_loader, _ = create_data_loaders(
@@ -586,7 +590,8 @@ def train_transformer_with_progress(df, epochs, batch_size, learning_rate):
                 chart_placeholder.plotly_chart(fig, use_container_width=True)
 
         # 保存最佳模型
-        torch.save(best_model_wts, './data/best_transformer_model.pth')
+        model_save_path = os.path.join(data_dir, 'best_transformer_model.pth')
+        torch.save(best_model_wts, model_save_path)
 
         status_text.empty()
         progress_bar.empty()
@@ -594,7 +599,7 @@ def train_transformer_with_progress(df, epochs, batch_size, learning_rate):
         st.success(f"""
         ✅ **训练完成！**
         - 最佳验证损失: {best_loss:.6f}
-        - 模型已保存至: ./data/best_transformer_model.pth
+        - 模型已保存至: {model_save_path}
         """)
         st.balloons()
 
@@ -788,6 +793,10 @@ def train_lightgbm_with_progress(n_estimators, max_depth, learning_rate):
     from lightgbm_model import ParameterRecommender
     from lightgbm_data_processor import LightGBMDataGenerator
 
+    # 获取基础目录路径
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, 'data')
+
     # 创建进度显示区域
     st.markdown("### 📈 训练进度")
     progress_container = st.container()
@@ -872,8 +881,8 @@ def train_lightgbm_with_progress(n_estimators, max_depth, learning_rate):
         status_text.info("🔄 保存模型...")
 
         # 保存模型
-        os.makedirs('./data', exist_ok=True)
-        recommender.save_model('./data')
+        os.makedirs(data_dir, exist_ok=True)
+        recommender.save_model(data_dir)
 
         progress_bar.progress(1.0)
         status_text.empty()
@@ -883,7 +892,7 @@ def train_lightgbm_with_progress(n_estimators, max_depth, learning_rate):
         st.success(f"""
         ✅ **训练完成！**
         - 平均 MAE: {avg_mae:.4f}
-        - 模型已保存至: ./data/
+        - 模型已保存至: {data_dir}
         """)
         st.balloons()
 
@@ -1010,6 +1019,10 @@ def run_smart_optimization():
     from sales_data_processor import SalesDataProcessor, SalesDataGenerator
     from lightgbm_model import ParameterRecommender, SalesFeatureExtractor
 
+    # 获取基础目录路径
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.join(base_dir, 'data')
+
     st.markdown("### 📈 优化进度")
     progress_container = st.container()
 
@@ -1024,11 +1037,15 @@ def run_smart_optimization():
         status_text.info("🔄 加载 Transformer 模型...")
         progress_bar.progress(0.1)
 
+        model_path = os.path.join(data_dir, 'best_transformer_model.pth')
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Transformer 模型文件不存在: {model_path}")
+
         transformer = SalesForecasterEncoderOnly(
             input_dim=5, d_model=128, num_heads=8, num_layers=4,
             d_ff=512, input_seq_len=30, output_seq_len=7, dropout=0.1
         )
-        transformer.load_state_dict(torch.load('./data/best_transformer_model.pth', map_location=device))
+        transformer.load_state_dict(torch.load(model_path, map_location=device))
         transformer = transformer.to(device)
         transformer.eval()
 
@@ -1036,8 +1053,12 @@ def run_smart_optimization():
         status_text.info("🔄 加载数据处理器...")
         progress_bar.progress(0.2)
 
+        scaler_path = os.path.join(data_dir, 'scaler_params.npz')
+        if not os.path.exists(scaler_path):
+            raise FileNotFoundError(f"数据处理器文件不存在: {scaler_path}")
+
         processor = SalesDataProcessor()
-        processor.load_scaler('./data/scaler_params.npz')
+        processor.load_scaler(scaler_path)
 
         # 步骤3: 生成输入数据
         status_text.info("🔄 准备输入数据...")
@@ -1064,8 +1085,12 @@ def run_smart_optimization():
         status_text.info("🔄 加载 LightGBM 模型...")
         progress_bar.progress(0.7)
 
+        lgb_meta_path = os.path.join(data_dir, 'lgb_meta.joblib')
+        if not os.path.exists(lgb_meta_path):
+            raise FileNotFoundError(f"LightGBM 模型文件不存在: {lgb_meta_path}")
+
         recommender = ParameterRecommender()
-        recommender.load_model('./data')
+        recommender.load_model(data_dir)
 
         # 步骤6: 推荐参数
         status_text.info("🧠 生成参数推荐...")
@@ -1113,10 +1138,19 @@ def run_smart_optimization():
         st.success("✅ 智能优化完成！")
         st.rerun()
 
+    except FileNotFoundError as e:
+        status_text.empty()
+        progress_bar.empty()
+        st.error(f"❌ 模型文件未找到: {str(e)}")
+        st.warning("请确保已将 data/ 目录下的模型文件提交到 Git 仓库。")
+        st.info(f"当前查找路径: {data_dir}")
+
     except Exception as e:
         status_text.empty()
         progress_bar.empty()
         st.error(f"❌ 优化失败: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc())
 
 
 def display_optimization_results(optimization_model):
