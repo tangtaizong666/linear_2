@@ -355,66 +355,78 @@ def display_header():
 def sidebar_parameters():
     """侧边栏参数设置"""
     st.sidebar.markdown("## 📊 模型参数设置")
-    
+
+    # 初始化 session_state 中的参数（如果不存在）
+    if 'sidebar_profits' not in st.session_state:
+        st.session_state.sidebar_profits = [float(p) for p in model.profits]
+    if 'sidebar_material_limits' not in st.session_state:
+        st.session_state.sidebar_material_limits = [float(m) for m in model.material_limits]
+    if 'sidebar_transport_limits' not in st.session_state:
+        st.session_state.sidebar_transport_limits = [float(t) for t in model.transport_limits]
+    if 'sidebar_min_ratio' not in st.session_state:
+        st.session_state.sidebar_min_ratio = 0.8
+    if 'sidebar_max_multiplier' not in st.session_state:
+        st.session_state.sidebar_max_multiplier = 1.5
+
     # 创建参数分组
     with st.sidebar.expander("💰 利润参数", expanded=True):
         profits = []
         for i, beverage in enumerate(model.beverage_types):
             profit = st.number_input(
                 f"{beverage} 利润 (元/升)",
-                value=float(model.profits[i]),
+                value=st.session_state.sidebar_profits[i],
                 min_value=0.1,
                 max_value=50.0,
                 step=0.1,
                 key=f"profit_{i}"
             )
             profits.append(profit)
-    
+
     with st.sidebar.expander("📦 原料供应限制", expanded=True):
         material_limits = []
         for i, material in enumerate(model.material_types):
             limit = st.number_input(
                 f"{material} 供应量 (千克)",
-                value=float(model.material_limits[i]),
+                value=st.session_state.sidebar_material_limits[i],
                 min_value=100.0,
                 max_value=50000.0,
                 step=100.0,
                 key=f"material_{i}"
             )
             material_limits.append(limit)
-    
+
     with st.sidebar.expander("🚛 运输能力限制", expanded=True):
         transport_limits = []
         for i, region in enumerate(model.transport_regions):
             limit = st.number_input(
                 f"{region} 运输能力 (升)",
-                value=float(model.transport_limits[i]),
+                value=st.session_state.sidebar_transport_limits[i],
                 min_value=100.0,
                 max_value=10000.0,
                 step=50.0,
                 key=f"transport_{i}"
             )
             transport_limits.append(limit)
-    
+
     with st.sidebar.expander("⚙️ 生产约束参数", expanded=True):
         min_ratio = st.slider(
             "最小生产比例 (相对于上期销售)",
             min_value=0.3,
             max_value=1.0,
-            value=0.8,
+            value=st.session_state.sidebar_min_ratio,
             step=0.05,
             key="min_ratio"
         )
-        
+
         max_multiplier = st.slider(
             "最大生产倍数 (相对于上期销售)",
             min_value=1.0,
             max_value=3.0,
-            value=1.5,
+            value=st.session_state.sidebar_max_multiplier,
             step=0.1,
             key="max_multiplier"
         )
-    
+
     # 更新模型参数
     if st.sidebar.button("🔄 更新参数", key="update_params"):
         params = {
@@ -425,6 +437,12 @@ def sidebar_parameters():
             'max_production_multiplier': max_multiplier
         }
         model.update_parameters(params)
+        # 同步更新 session_state
+        st.session_state.sidebar_profits = profits
+        st.session_state.sidebar_material_limits = material_limits
+        st.session_state.sidebar_transport_limits = transport_limits
+        st.session_state.sidebar_min_ratio = min_ratio
+        st.session_state.sidebar_max_multiplier = max_multiplier
         st.session_state['parameters_updated'] = True
         st.rerun()
 

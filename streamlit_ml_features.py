@@ -1214,14 +1214,26 @@ def display_optimization_results(optimization_model):
         with col2:
             if st.button("✅ 确认同步参数", key="confirm_sync", use_container_width=True, type="primary"):
                 # 同步参数到模型
+                profits_list = list(result['profits'].values())
+                material_limits_list = list(result['material_limits'].values())
+                transport_limits_list = list(result['transport_limits'].values())
+
                 params = {
-                    'profits': list(result['profits'].values()),
-                    'material_limits': list(result['material_limits'].values()),
-                    'transport_limits': list(result['transport_limits'].values()),
+                    'profits': profits_list,
+                    'material_limits': material_limits_list,
+                    'transport_limits': transport_limits_list,
                     'min_production_ratio': result['min_production_ratio'],
                     'max_production_multiplier': result['max_production_multiplier']
                 }
                 optimization_model.update_parameters(params)
+
+                # 同步更新侧边栏的 session_state，使 UI 控件显示新值
+                st.session_state.sidebar_profits = profits_list
+                st.session_state.sidebar_material_limits = material_limits_list
+                st.session_state.sidebar_transport_limits = transport_limits_list
+                st.session_state.sidebar_min_ratio = result['min_production_ratio']
+                st.session_state.sidebar_max_multiplier = result['max_production_multiplier']
+
                 st.session_state['sync_params'] = True
                 st.success("✅ 参数已同步！请返回主页点击「开始求解」查看优化结果。")
                 st.balloons()
