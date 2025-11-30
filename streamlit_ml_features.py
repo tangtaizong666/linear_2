@@ -1234,9 +1234,26 @@ def display_optimization_results(optimization_model):
                 st.session_state.sidebar_min_ratio = result['min_production_ratio']
                 st.session_state.sidebar_max_multiplier = result['max_production_multiplier']
 
+                # 删除控件的 key，让下次渲染时从 sidebar_* 变量重新读取
+                # （Streamlit 不允许直接修改已实例化控件的 key 值）
+                keys_to_delete = []
+                for i in range(5):
+                    keys_to_delete.extend([f"profit_{i}", f"material_{i}", f"transport_{i}"])
+                keys_to_delete.extend(["min_ratio", "max_multiplier"])
+
+                for key in keys_to_delete:
+                    if key in st.session_state:
+                        del st.session_state[key]
+
                 st.session_state['sync_params'] = True
-                st.success("✅ 参数已同步！请返回主页点击「开始求解」查看优化结果。")
-                st.balloons()
+                st.session_state['sync_success'] = True  # 标记同步成功，用于显示提示
+                st.rerun()
+
+    # 在页面重新渲染后显示同步成功提示
+    if st.session_state.get('sync_success', False):
+        st.success("✅ 参数已同步成功！侧边栏参数已更新，请返回主页点击「开始求解」查看优化结果。")
+        st.balloons()
+        st.session_state['sync_success'] = False  # 重置状态，只显示一次
 
 
 # ==================== 主路由函数 ====================
