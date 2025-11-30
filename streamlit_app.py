@@ -356,6 +356,35 @@ def sidebar_parameters():
     """侧边栏参数设置"""
     st.sidebar.markdown("## 📊 模型参数设置")
 
+    # 参数限制常量（与 streamlit_ml_features.py 中的 PARAM_LIMITS 保持一致）
+    PROFIT_LIMITS = {
+        '碳酸饮料': (0.1, 50.0),
+        '果汁饮料': (0.1, 50.0),
+        '茶饮料': (0.1, 50.0),
+        '功能饮料': (0.1, 50.0),
+        '矿泉水': (0.1, 50.0),
+    }
+    MATERIAL_LIMITS = {
+        '白砂糖': (100.0, 50000.0),
+        '浓缩果汁': (100.0, 50000.0),
+        '茶叶提取物': (100.0, 50000.0),
+        '功能成分': (100.0, 50000.0),
+        '包装材料': (100.0, 50000.0),
+    }
+    TRANSPORT_LIMITS = {
+        '道里区': (100.0, 10000.0),
+        '南岗区': (100.0, 10000.0),
+        '道外区': (100.0, 10000.0),
+        '香坊区': (100.0, 10000.0),
+        '松北区': (100.0, 10000.0),
+    }
+    MIN_RATIO_RANGE = (0.3, 1.0)
+    MAX_MULT_RANGE = (1.0, 3.0)
+
+    # 辅助函数：将值裁剪到控件允许范围
+    def clip_value(val, min_v, max_v):
+        return max(min_v, min(max_v, float(val)))
+
     # 初始化 session_state 中的参数（如果不存在）
     if 'sidebar_profits' not in st.session_state:
         st.session_state.sidebar_profits = [float(p) for p in model.profits]
@@ -368,15 +397,32 @@ def sidebar_parameters():
     if 'sidebar_max_multiplier' not in st.session_state:
         st.session_state.sidebar_max_multiplier = 1.5
 
+    # 确保 session_state 中的值在控件范围内（防止同步参数越界）
+    for i, beverage in enumerate(model.beverage_types):
+        min_v, max_v = PROFIT_LIMITS[beverage]
+        st.session_state.sidebar_profits[i] = clip_value(st.session_state.sidebar_profits[i], min_v, max_v)
+
+    for i, material in enumerate(model.material_types):
+        min_v, max_v = MATERIAL_LIMITS[material]
+        st.session_state.sidebar_material_limits[i] = clip_value(st.session_state.sidebar_material_limits[i], min_v, max_v)
+
+    for i, region in enumerate(model.transport_regions):
+        min_v, max_v = TRANSPORT_LIMITS[region]
+        st.session_state.sidebar_transport_limits[i] = clip_value(st.session_state.sidebar_transport_limits[i], min_v, max_v)
+
+    st.session_state.sidebar_min_ratio = clip_value(st.session_state.sidebar_min_ratio, MIN_RATIO_RANGE[0], MIN_RATIO_RANGE[1])
+    st.session_state.sidebar_max_multiplier = clip_value(st.session_state.sidebar_max_multiplier, MAX_MULT_RANGE[0], MAX_MULT_RANGE[1])
+
     # 创建参数分组
     with st.sidebar.expander("💰 利润参数", expanded=True):
         profits = []
         for i, beverage in enumerate(model.beverage_types):
+            min_v, max_v = PROFIT_LIMITS[beverage]
             profit = st.number_input(
                 f"{beverage} 利润 (元/升)",
                 value=st.session_state.sidebar_profits[i],
-                min_value=0.1,
-                max_value=50.0,
+                min_value=min_v,
+                max_value=max_v,
                 step=0.1,
                 key=f"profit_{i}"
             )
@@ -385,11 +431,12 @@ def sidebar_parameters():
     with st.sidebar.expander("📦 原料供应限制", expanded=True):
         material_limits = []
         for i, material in enumerate(model.material_types):
+            min_v, max_v = MATERIAL_LIMITS[material]
             limit = st.number_input(
                 f"{material} 供应量 (千克)",
                 value=st.session_state.sidebar_material_limits[i],
-                min_value=100.0,
-                max_value=50000.0,
+                min_value=min_v,
+                max_value=max_v,
                 step=100.0,
                 key=f"material_{i}"
             )
@@ -398,11 +445,12 @@ def sidebar_parameters():
     with st.sidebar.expander("🚛 运输能力限制", expanded=True):
         transport_limits = []
         for i, region in enumerate(model.transport_regions):
+            min_v, max_v = TRANSPORT_LIMITS[region]
             limit = st.number_input(
                 f"{region} 运输能力 (升)",
                 value=st.session_state.sidebar_transport_limits[i],
-                min_value=100.0,
-                max_value=10000.0,
+                min_value=min_v,
+                max_value=max_v,
                 step=50.0,
                 key=f"transport_{i}"
             )
@@ -411,8 +459,8 @@ def sidebar_parameters():
     with st.sidebar.expander("⚙️ 生产约束参数", expanded=True):
         min_ratio = st.slider(
             "最小生产比例 (相对于上期销售)",
-            min_value=0.3,
-            max_value=1.0,
+            min_value=MIN_RATIO_RANGE[0],
+            max_value=MIN_RATIO_RANGE[1],
             value=st.session_state.sidebar_min_ratio,
             step=0.05,
             key="min_ratio"
@@ -420,8 +468,8 @@ def sidebar_parameters():
 
         max_multiplier = st.slider(
             "最大生产倍数 (相对于上期销售)",
-            min_value=1.0,
-            max_value=3.0,
+            min_value=MAX_MULT_RANGE[0],
+            max_value=MAX_MULT_RANGE[1],
             value=st.session_state.sidebar_max_multiplier,
             step=0.1,
             key="max_multiplier"
