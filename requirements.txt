@@ -13,5 +13,6 @@ torch>=2.0.0
 torchsummary>=1.5.1
 
 # ==================== LightGBM 模型依赖 ====================
+scikit-learn>=1.0.0
 lightgbm>=4.0.0
 joblib>=1.3.0
