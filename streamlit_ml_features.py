@@ -1261,23 +1261,9 @@ def display_optimization_results(optimization_model):
                 }
                 optimization_model.update_parameters(params)
 
-                # 同步更新侧边栏的 session_state，使 UI 控件显示新值
-                st.session_state.sidebar_profits = profits_list
-                st.session_state.sidebar_material_limits = material_limits_list
-                st.session_state.sidebar_transport_limits = transport_limits_list
-                st.session_state.sidebar_min_ratio = result['min_production_ratio']
-                st.session_state.sidebar_max_multiplier = result['max_production_multiplier']
-
-                # 删除控件的 key，让下次渲染时从 sidebar_* 变量重新读取
-                # （Streamlit 不允许直接修改已实例化控件的 key 值）
-                keys_to_delete = []
-                for i in range(5):
-                    keys_to_delete.extend([f"profit_{i}", f"material_{i}", f"transport_{i}"])
-                keys_to_delete.extend(["min_ratio", "max_multiplier"])
-
-                for key in keys_to_delete:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # 将待同步参数存入 session_state，下次 rerun 时由 sidebar_parameters 处理
+                # 这样可以避免 "widget key already instantiated" 错误
+                st.session_state['pending_sync_params'] = params
 
                 st.session_state['sync_params'] = True
                 st.session_state['sync_success'] = True  # 标记同步成功，用于显示提示

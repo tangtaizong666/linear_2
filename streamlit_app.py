@@ -402,32 +402,52 @@ def sidebar_parameters(optimization_model):
 
     # 参数限制常量（与 streamlit_ml_features.py 中的 PARAM_LIMITS 保持一致）
     PROFIT_LIMITS = {
-        '碳酸饮料': (0.1, 50.0),
-        '果汁饮料': (0.1, 50.0),
-        '茶饮料': (0.1, 50.0),
-        '功能饮料': (0.1, 50.0),
-        '矿泉水': (0.1, 50.0),
+        '碳酸饮料': (5.0, 15.0),
+        '果汁饮料': (8.0, 18.0),
+        '茶饮料': (6.0, 16.0),
+        '功能饮料': (10.0, 25.0),
+        '矿泉水': (3.0, 10.0),
     }
     MATERIAL_LIMITS = {
-        '白砂糖': (100.0, 50000.0),
-        '浓缩果汁': (100.0, 50000.0),
-        '茶叶提取物': (100.0, 50000.0),
-        '功能成分': (100.0, 50000.0),
-        '包装材料': (100.0, 50000.0),
+        '白砂糖': (8000.0, 25000.0),
+        '浓缩果汁': (4000.0, 15000.0),
+        '茶叶提取物': (3000.0, 12000.0),
+        '功能成分': (1000.0, 5000.0),
+        '包装材料': (8000.0, 20000.0),
     }
     TRANSPORT_LIMITS = {
-        '道里区': (100.0, 10000.0),
-        '南岗区': (100.0, 10000.0),
-        '道外区': (100.0, 10000.0),
-        '香坊区': (100.0, 10000.0),
-        '松北区': (100.0, 10000.0),
+        '道里区': (2000.0, 5000.0),
+        '南岗区': (1500.0, 4000.0),
+        '道外区': (1200.0, 3500.0),
+        '香坊区': (1000.0, 3000.0),
+        '松北区': (600.0, 2000.0),
     }
-    MIN_RATIO_RANGE = (0.3, 1.0)
-    MAX_MULT_RANGE = (1.0, 3.0)
+    MIN_RATIO_RANGE = (0.5, 0.95)
+    MAX_MULT_RANGE = (1.2, 2.5)
 
     # 辅助函数：将值裁剪到控件允许范围
     def clip_value(val, min_v, max_v):
         return max(min_v, min(max_v, float(val)))
+
+    # ========== 处理待同步的参数（必须在控件创建之前执行） ==========
+    # 如果有来自智能优化的待同步参数，在控件创建前更新 session_state
+    if st.session_state.get('pending_sync_params'):
+        pending = st.session_state.pending_sync_params
+        # 更新 sidebar_* 数据源
+        st.session_state.sidebar_profits = pending['profits']
+        st.session_state.sidebar_material_limits = pending['material_limits']
+        st.session_state.sidebar_transport_limits = pending['transport_limits']
+        st.session_state.sidebar_min_ratio = pending['min_production_ratio']
+        st.session_state.sidebar_max_multiplier = pending['max_production_multiplier']
+        # 更新控件的 key（在控件实例化之前）
+        for i in range(5):
+            st.session_state[f"profit_{i}"] = pending['profits'][i]
+            st.session_state[f"material_{i}"] = pending['material_limits'][i]
+            st.session_state[f"transport_{i}"] = pending['transport_limits'][i]
+        st.session_state["min_ratio"] = pending['min_production_ratio']
+        st.session_state["max_multiplier"] = pending['max_production_multiplier']
+        # 清除待同步标记
+        del st.session_state['pending_sync_params']
 
     # 初始化 session_state 中的参数（如果不存在）
     if 'sidebar_profits' not in st.session_state:
@@ -437,9 +457,9 @@ def sidebar_parameters(optimization_model):
     if 'sidebar_transport_limits' not in st.session_state:
         st.session_state.sidebar_transport_limits = [float(t) for t in MODEL.transport_limits]
     if 'sidebar_min_ratio' not in st.session_state:
-        st.session_state.sidebar_min_ratio = 0.8
+        st.session_state.sidebar_min_ratio = 0.75
     if 'sidebar_max_multiplier' not in st.session_state:
-        st.session_state.sidebar_max_multiplier = 1.5
+        st.session_state.sidebar_max_multiplier = 1.8
 
     # 确保 session_state 中的值在控件范围内（防止同步参数越界）
     for i, beverage in enumerate(MODEL.beverage_types):
@@ -458,66 +478,82 @@ def sidebar_parameters(optimization_model):
     st.session_state.sidebar_max_multiplier = clip_value(st.session_state.sidebar_max_multiplier, MAX_MULT_RANGE[0], MAX_MULT_RANGE[1])
 
     # 创建参数分组
+    # 注意：使用 session_state 直接绑定控件值，确保同步更新时控件能正确显示新值
     with st.sidebar.expander("💰 利润参数", expanded=True):
         profits = []
         for i, beverage in enumerate(MODEL.beverage_types):
             min_v, max_v = PROFIT_LIMITS[beverage]
+            key = f"profit_{i}"
+            # 如果 key 不在 session_state 中，用 sidebar_profits 初始化
+            if key not in st.session_state:
+                st.session_state[key] = st.session_state.sidebar_profits[i]
             profit = st.number_input(
                 f"{beverage} 利润 (元/升)",
-                value=st.session_state.sidebar_profits[i],
                 min_value=min_v,
                 max_value=max_v,
                 step=0.1,
-                key=f"profit_{i}"
+                key=key
             )
             profits.append(profit)
+        # 同步控件值回 sidebar_profits（保持数据一致性）
+        st.session_state.sidebar_profits = profits
 
     with st.sidebar.expander("📦 原料供应限制", expanded=True):
         material_limits = []
         for i, material in enumerate(MODEL.material_types):
             min_v, max_v = MATERIAL_LIMITS[material]
+            key = f"material_{i}"
+            if key not in st.session_state:
+                st.session_state[key] = st.session_state.sidebar_material_limits[i]
             limit = st.number_input(
                 f"{material} 供应量 (千克)",
-                value=st.session_state.sidebar_material_limits[i],
                 min_value=min_v,
                 max_value=max_v,
                 step=100.0,
-                key=f"material_{i}"
+                key=key
             )
             material_limits.append(limit)
+        st.session_state.sidebar_material_limits = material_limits
 
     with st.sidebar.expander("🚛 运输能力限制", expanded=True):
         transport_limits = []
         for i, region in enumerate(MODEL.transport_regions):
             min_v, max_v = TRANSPORT_LIMITS[region]
+            key = f"transport_{i}"
+            if key not in st.session_state:
+                st.session_state[key] = st.session_state.sidebar_transport_limits[i]
             limit = st.number_input(
                 f"{region} 运输能力 (升)",
-                value=st.session_state.sidebar_transport_limits[i],
                 min_value=min_v,
                 max_value=max_v,
                 step=50.0,
-                key=f"transport_{i}"
+                key=key
             )
             transport_limits.append(limit)
+        st.session_state.sidebar_transport_limits = transport_limits
 
     with st.sidebar.expander("⚙️ 生产约束参数", expanded=True):
+        if "min_ratio" not in st.session_state:
+            st.session_state["min_ratio"] = st.session_state.sidebar_min_ratio
         min_ratio = st.slider(
             "最小生产比例 (相对于上期销售)",
             min_value=MIN_RATIO_RANGE[0],
             max_value=MIN_RATIO_RANGE[1],
-            value=st.session_state.sidebar_min_ratio,
             step=0.05,
             key="min_ratio"
         )
+        st.session_state.sidebar_min_ratio = min_ratio
 
+        if "max_multiplier" not in st.session_state:
+            st.session_state["max_multiplier"] = st.session_state.sidebar_max_multiplier
         max_multiplier = st.slider(
             "最大生产倍数 (相对于上期销售)",
             min_value=MAX_MULT_RANGE[0],
             max_value=MAX_MULT_RANGE[1],
-            value=st.session_state.sidebar_max_multiplier,
             step=0.1,
             key="max_multiplier"
         )
+        st.session_state.sidebar_max_multiplier = max_multiplier
 
     # 更新模型参数
     if st.sidebar.button("🔄 更新参数", key="update_params"):
