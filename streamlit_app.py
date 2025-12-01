@@ -17,7 +17,6 @@ import os
 
 def inject_coze_chatbot():
     """注入 Coze 聊天机器人到页面 - 使用 Coze 官方 WebSDK"""
-    # 使用 Coze 官方 WebSDK 嵌���
     coze_chatbot_html = """
     <!DOCTYPE html>
     <html>
@@ -87,6 +86,7 @@ def inject_coze_chatbot():
     """, unsafe_allow_html=True)
 
     components.html(coze_chatbot_html, height=800, width=800, scrolling=False)
+
 
 SIMPLEX_TABLEAU_HTML = """
 <div style="margin-top:0.5rem;">
@@ -246,8 +246,8 @@ SIMPLEX_TABLEAU_HTML = """
 </div>
 """
 
-# 导入模型类
-from beverage_optimization_model import BeverageOptimizationModel, model
+# 导入模型类（只导入类，不再导入全局 model 实例）
+from beverage_optimization_model import BeverageOptimizationModel
 
 # 导入机器学习功能模块
 try:
@@ -260,6 +260,46 @@ try:
     ML_FEATURES_AVAILABLE = True
 except ImportError:
     ML_FEATURES_AVAILABLE = False
+
+
+def get_optimization_model():
+    """
+    获取当前会话中唯一的优化模型实例。
+
+    - 第一次调用时：在 session_state 中创建一个 BeverageOptimizationModel()
+    - 之后每次调用：都返回同一个实例
+    - 同时会用 session_state.sidebar_* 里的参数把模型参数同步一遍
+    """
+    ss = st.session_state
+
+    # 1. 如果还没有模型实例，先创建一份放到 session_state
+    if 'optimization_model' not in ss:
+        ss.optimization_model = BeverageOptimizationModel()
+
+    optimization_model = ss.optimization_model
+
+    # 2. 用 session_state 中的侧边栏参数，覆盖模型内部参数
+    params = {}
+
+    if 'sidebar_profits' in ss:
+        params['profits'] = ss.sidebar_profits
+    if 'sidebar_material_limits' in ss:
+        params['material_limits'] = ss.sidebar_material_limits
+    if 'sidebar_transport_limits' in ss:
+        params['transport_limits'] = ss.sidebar_transport_limits
+    if 'sidebar_min_ratio' in ss:
+        params['min_production_ratio'] = ss.sidebar_min_ratio
+    if 'sidebar_max_multiplier' in ss:
+        params['max_production_multiplier'] = ss.sidebar_max_multiplier
+
+    if params:
+        try:
+            optimization_model.update_parameters(params)
+        except Exception as e:
+            ss['model_sync_error'] = f"同步参数到模型时出错: {e}"
+
+    return optimization_model
+
 
 def setup_page():
     """设置页面配置"""
@@ -340,10 +380,11 @@ def setup_page():
     </style>
     """, unsafe_allow_html=True)
 
+
 def display_header():
     """显示页面标题"""
     st.markdown('<div class="main-header">🥤 饮料生产企业线性规划优化系统</div>', unsafe_allow_html=True)
-    
+
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("""
@@ -352,9 +393,12 @@ def display_header():
         </div>
         """, unsafe_allow_html=True)
 
-def sidebar_parameters():
+
+def sidebar_parameters(optimization_model):
     """侧边栏参数设置"""
     st.sidebar.markdown("## 📊 模型参数设置")
+
+    MODEL = optimization_model
 
     # 参数限制常量（与 streamlit_ml_features.py 中的 PARAM_LIMITS 保持一致）
     PROFIT_LIMITS = {
@@ -387,26 +431,26 @@ def sidebar_parameters():
 
     # 初始化 session_state 中的参数（如果不存在）
     if 'sidebar_profits' not in st.session_state:
-        st.session_state.sidebar_profits = [float(p) for p in model.profits]
+        st.session_state.sidebar_profits = [float(p) for p in MODEL.profits]
     if 'sidebar_material_limits' not in st.session_state:
-        st.session_state.sidebar_material_limits = [float(m) for m in model.material_limits]
+        st.session_state.sidebar_material_limits = [float(m) for m in MODEL.material_limits]
     if 'sidebar_transport_limits' not in st.session_state:
-        st.session_state.sidebar_transport_limits = [float(t) for t in model.transport_limits]
+        st.session_state.sidebar_transport_limits = [float(t) for t in MODEL.transport_limits]
     if 'sidebar_min_ratio' not in st.session_state:
         st.session_state.sidebar_min_ratio = 0.8
     if 'sidebar_max_multiplier' not in st.session_state:
         st.session_state.sidebar_max_multiplier = 1.5
 
     # 确保 session_state 中的值在控件范围内（防止同步参数越界）
-    for i, beverage in enumerate(model.beverage_types):
+    for i, beverage in enumerate(MODEL.beverage_types):
         min_v, max_v = PROFIT_LIMITS[beverage]
         st.session_state.sidebar_profits[i] = clip_value(st.session_state.sidebar_profits[i], min_v, max_v)
 
-    for i, material in enumerate(model.material_types):
+    for i, material in enumerate(MODEL.material_types):
         min_v, max_v = MATERIAL_LIMITS[material]
         st.session_state.sidebar_material_limits[i] = clip_value(st.session_state.sidebar_material_limits[i], min_v, max_v)
 
-    for i, region in enumerate(model.transport_regions):
+    for i, region in enumerate(MODEL.transport_regions):
         min_v, max_v = TRANSPORT_LIMITS[region]
         st.session_state.sidebar_transport_limits[i] = clip_value(st.session_state.sidebar_transport_limits[i], min_v, max_v)
 
@@ -416,7 +460,7 @@ def sidebar_parameters():
     # 创建参数分组
     with st.sidebar.expander("💰 利润参数", expanded=True):
         profits = []
-        for i, beverage in enumerate(model.beverage_types):
+        for i, beverage in enumerate(MODEL.beverage_types):
             min_v, max_v = PROFIT_LIMITS[beverage]
             profit = st.number_input(
                 f"{beverage} 利润 (元/升)",
@@ -430,7 +474,7 @@ def sidebar_parameters():
 
     with st.sidebar.expander("📦 原料供应限制", expanded=True):
         material_limits = []
-        for i, material in enumerate(model.material_types):
+        for i, material in enumerate(MODEL.material_types):
             min_v, max_v = MATERIAL_LIMITS[material]
             limit = st.number_input(
                 f"{material} 供应量 (千克)",
@@ -444,7 +488,7 @@ def sidebar_parameters():
 
     with st.sidebar.expander("🚛 运输能力限制", expanded=True):
         transport_limits = []
-        for i, region in enumerate(model.transport_regions):
+        for i, region in enumerate(MODEL.transport_regions):
             min_v, max_v = TRANSPORT_LIMITS[region]
             limit = st.number_input(
                 f"{region} 运输能力 (升)",
@@ -484,7 +528,7 @@ def sidebar_parameters():
             'min_production_ratio': min_ratio,
             'max_production_multiplier': max_multiplier
         }
-        model.update_parameters(params)
+        MODEL.update_parameters(params)
         # 同步更新 session_state
         st.session_state.sidebar_profits = profits
         st.session_state.sidebar_material_limits = material_limits
@@ -494,12 +538,15 @@ def sidebar_parameters():
         st.session_state['parameters_updated'] = True
         st.rerun()
 
-def display_model_overview():
+
+def display_model_overview(optimization_model):
     """显示模型概览"""
+    MODEL = optimization_model
+
     st.markdown('<div class="section-header">📋 模型概览</div>', unsafe_allow_html=True)
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("""
         <div class="parameter-card">
@@ -513,11 +560,11 @@ def display_model_overview():
         </ul>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         # 构建目标函数卡片的完整HTML，避免多次调用 st.markdown 导致元素脱离容器
         profit_items = "".join([
-            f"<li>{bev}: {model.profits[i]:.1f}元/升</li>" for i, bev in enumerate(model.beverage_types)
+            f"<li>{bev}: {MODEL.profits[i]:.1f}元/升</li>" for i, bev in enumerate(MODEL.beverage_types)
         ])
         target_html = f"""
         <div class="parameter-card">
@@ -531,7 +578,7 @@ def display_model_overview():
         </div>
         """
         st.markdown(target_html, unsafe_allow_html=True)
-    
+
     with col3:
         st.markdown("""
         <div class="parameter-card">
@@ -545,43 +592,49 @@ def display_model_overview():
         </div>
         """, unsafe_allow_html=True)
 
-def solve_and_display():
+
+def solve_and_display(optimization_model):
     """求解模型并显示结果"""
+    MODEL = optimization_model
+
     st.markdown('<div class="section-header">🧮 模型求解</div>', unsafe_allow_html=True)
-    
+
     # 求解按钮
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("🔍 开始求解", key="solve_model", use_container_width=True):
             with st.spinner("正在使用单纯形法求解线性规划模型..."):
-                solution = model.solve_model()
+                solution = MODEL.solve_model()
                 st.session_state['solution'] = solution
-                
+
                 if solution['success']:
                     # 进行灵敏度分析
-                    sensitivity = model.sensitivity_analysis(solution)
+                    sensitivity = MODEL.sensitivity_analysis(solution)
                     st.session_state['sensitivity'] = sensitivity
-            
+
             st.success("✅ 模型求解完成！")
-    
+
     # 显示求解结果
     if 'solution' in st.session_state:
         solution = st.session_state['solution']
-        display_solution_results(solution)
-    
+        display_solution_results(optimization_model, solution)
+
     # 显示灵敏度分析
     if 'sensitivity' in st.session_state:
         sensitivity = st.session_state['sensitivity']
-        display_sensitivity_analysis(sensitivity)
+        display_sensitivity_analysis(optimization_model, sensitivity)
 
-def display_solution_results(solution):
+
+def display_solution_results(optimization_model, solution):
     """显示求解结果"""
+    MODEL = optimization_model
+
     st.markdown('<div class="section-header">📈 求解结果</div>', unsafe_allow_html=True)
-    
+
     if not solution['success']:
         st.error(f"❌ 求解失败: {solution.get('message', '未知错误')}")
         return
-    
+
     # 1. 最优解概览
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -593,7 +646,7 @@ def display_solution_results(solution):
         </p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         total_production = np.sum(solution['decision_variables'])
         st.markdown(f"""
@@ -604,7 +657,7 @@ def display_solution_results(solution):
         </p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col3:
         st.markdown(f"""
         <div class="result-card">
@@ -615,38 +668,38 @@ def display_solution_results(solution):
         </p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # 2. 最优生产方案
     st.markdown("### 🎯 最优生产方案")
-    
+
     production_data = []
-    for i, beverage in enumerate(model.beverage_types):
+    for i, beverage in enumerate(MODEL.beverage_types):
         production_data.append({
             '饮料类型': beverage,
             '最优生产量(升)': f"{solution['decision_variables'][i]:.0f}",
-            '占总产量比例': f"{solution['decision_variables'][i]/total_production*100:.1f}%",
-            '单位利润(元/升)': f"{model.profits[i]:.1f}",
-            '贡献利润(元)': f"{solution['decision_variables'][i] * model.profits[i]:.0f}"
+            '占总产量比例': f"{solution['decision_variables'][i] / total_production * 100:.1f}%",
+            '单位利润(元/升)': f"{MODEL.profits[i]:.1f}",
+            '贡献利润(元)': f"{solution['decision_variables'][i] * MODEL.profits[i]:.0f}"
         })
-    
+
     production_df = pd.DataFrame(production_data)
     st.dataframe(production_df, use_container_width=True)
-    
+
     # 3. 生产方案可视化
     col1, col2 = st.columns(2)
-    
+
     with col1:
         # 生产量柱状图
         fig_production = go.Figure(data=[
             go.Bar(
-                x=model.beverage_types,
+                x=MODEL.beverage_types,
                 y=solution['decision_variables'],
                 marker_color=['#2E8B57', '#4682B4', '#DAA520', '#CD853F', '#708090'],
                 text=[f"{val:.0f}" for val in solution['decision_variables']],
                 textposition='auto',
             )
         ])
-        
+
         fig_production.update_layout(
             title="各饮料最优生产量",
             xaxis_title="饮料类型",
@@ -654,31 +707,31 @@ def display_solution_results(solution):
             showlegend=False,
             height=400
         )
-        
+
         st.plotly_chart(fig_production, use_container_width=True)
-    
+
     with col2:
         # 利润贡献饼图
-        profit_contributions = solution['decision_variables'] * model.profits
-        
+        profit_contributions = solution['decision_variables'] * MODEL.profits
+
         fig_pie = go.Figure(data=[
             go.Pie(
-                labels=model.beverage_types,
+                labels=MODEL.beverage_types,
                 values=profit_contributions,
                 hole=0.4,
                 marker_colors=['#2E8B57', '#4682B4', '#DAA520', '#CD853F', '#708090']
             )
         ])
-        
+
         fig_pie.update_layout(
             title="各饮料利润贡献分布",
             height=400
         )
-        
+
         st.plotly_chart(fig_pie, use_container_width=True)
-    
+
     # 4. 约束条件分析
-    display_constraint_analysis(solution['constraint_analysis'])
+    display_constraint_analysis(optimization_model, solution['constraint_analysis'])
 
     # 5. 单纯形迭代详细过程
     simplex_payload = solution.get('simplex_iterations')
@@ -686,65 +739,66 @@ def display_solution_results(solution):
         with st.expander("🔁 展开查看单纯形法迭代表", expanded=False):
             display_simplex_iteration_history(simplex_payload)
 
-    # 5. 单纯形迭代详细过程（折叠展示）
 
-def display_constraint_analysis(constraint_analysis):
+def display_constraint_analysis(optimization_model, constraint_analysis):
     """显示约束条件分析"""
+    MODEL = optimization_model
+
     st.markdown("### 🔗 约束条件分析")
-    
+
     # 原料约束
     st.markdown("#### 📦 原料约束分析")
-    
+
     material_data = []
-    for material in model.material_types:
+    for material in MODEL.material_types:
         if material in constraint_analysis['material_constraints']:
             info = constraint_analysis['material_constraints'][material]
             material_data.append({
                 '原料类型': material,
                 '使用量(千克)': f"{info['usage']:.0f}",
                 '供应限制(千克)': f"{info['limit']:.0f}",
-                '利用率': f"{info['utilization_rate']*100:.1f}%",
+                '利用率': f"{info['utilization_rate'] * 100:.1f}%",
                 '松弛量(千克)': f"{info['slack']:.1f}",
                 '影子价格': f"{info['shadow_price']:.3f}",
                 '状态': '紧约束' if info['is_binding'] else '非紧约束'
             })
-    
+
     material_df = pd.DataFrame(material_data)
     st.dataframe(material_df, use_container_width=True)
-    
+
     # 运输约束
     st.markdown("#### 🚛 运输约束分析")
-    
+
     transport_data = []
-    for region in model.transport_regions:
+    for region in MODEL.transport_regions:
         if region in constraint_analysis['transport_constraints']:
             info = constraint_analysis['transport_constraints'][region]
             transport_data.append({
                 '运输区域': region,
                 '运输量(升)': f"{info['usage']:.0f}",
                 '运输限制(升)': f"{info['limit']:.0f}",
-                '利用率': f"{info['utilization_rate']*100:.1f}%",
+                '利用率': f"{info['utilization_rate'] * 100:.1f}%",
                 '松弛量(升)': f"{info['slack']:.1f}",
                 '影子价格': f"{info['shadow_price']:.3f}",
                 '状态': '紧约束' if info['is_binding'] else '非紧约束'
             })
-    
+
     transport_df = pd.DataFrame(transport_data)
     st.dataframe(transport_df, use_container_width=True)
-    
+
     # 约束状态可视化
     col1, col2 = st.columns(2)
-    
+
     with col1:
         # 原料利用率图
         material_utilizations = []
         material_names = []
-        for material in model.material_types:
+        for material in MODEL.material_types:
             if material in constraint_analysis['material_constraints']:
                 info = constraint_analysis['material_constraints'][material]
                 material_names.append(material)
                 material_utilizations.append(info['utilization_rate'] * 100)
-        
+
         fig_material = go.Figure(data=[
             go.Bar(
                 x=material_names,
@@ -754,7 +808,7 @@ def display_constraint_analysis(constraint_analysis):
                 textposition='auto',
             )
         ])
-        
+
         fig_material.update_layout(
             title="原料利用率分析",
             xaxis_title="原料类型",
@@ -762,19 +816,19 @@ def display_constraint_analysis(constraint_analysis):
             showlegend=False,
             height=400
         )
-        
+
         st.plotly_chart(fig_material, use_container_width=True)
-    
+
     with col2:
         # 运输利用率图
         transport_utilizations = []
         transport_names = []
-        for region in model.transport_regions:
+        for region in MODEL.transport_regions:
             if region in constraint_analysis['transport_constraints']:
                 info = constraint_analysis['transport_constraints'][region]
                 transport_names.append(region)
                 transport_utilizations.append(info['utilization_rate'] * 100)
-        
+
         fig_transport = go.Figure(data=[
             go.Bar(
                 x=transport_names,
@@ -784,7 +838,7 @@ def display_constraint_analysis(constraint_analysis):
                 textposition='auto',
             )
         ])
-        
+
         fig_transport.update_layout(
             title="运输能力利用率分析",
             xaxis_title="运输区域",
@@ -792,22 +846,25 @@ def display_constraint_analysis(constraint_analysis):
             showlegend=False,
             height=400
         )
-        
+
         st.plotly_chart(fig_transport, use_container_width=True)
 
-def display_sensitivity_analysis(sensitivity):
+
+def display_sensitivity_analysis(optimization_model, sensitivity):
     """显示灵敏度分析"""
+    MODEL = optimization_model
+
     st.markdown('<div class="section-header">📊 灵敏度分析</div>', unsafe_allow_html=True)
-    
+
     if 'error' in sensitivity:
         st.error(f"❌ 灵敏度分析失败: {sensitivity['error']}")
         return
-    
+
     # 1. 目标函数系数分析
     st.markdown("### 💰 利润系数灵敏度分析")
-    
+
     profit_data = []
-    for beverage in model.beverage_types:
+    for beverage in MODEL.beverage_types:
         if beverage in sensitivity['objective_coefficients']:
             info = sensitivity['objective_coefficients'][beverage]
             profit_data.append({
@@ -817,13 +874,13 @@ def display_sensitivity_analysis(sensitivity):
                 '减少成本': f"{info['reduced_cost']:.3f}",
                 '建议': '保持当前利润' if info['reduced_cost'] < 1e-6 else f'建议提高利润至{info["current_profit"] + info["reduced_cost"]:.2f}元/升'
             })
-    
+
     profit_df = pd.DataFrame(profit_data)
     st.dataframe(profit_df, use_container_width=True)
-    
+
     # 2. 约束条件RHS灵敏度分析
     st.markdown("### 🔗 约束条件灵敏度分析")
-    
+
     if sensitivity['rhs_changes']:
         rhs_data = []
         for constraint, info in sensitivity['rhs_changes'].items():
@@ -833,33 +890,33 @@ def display_sensitivity_analysis(sensitivity):
                 '影子价格': f"{info['shadow_price']:.3f}",
                 '改进建议': info['recommendation']
             })
-        
+
         rhs_df = pd.DataFrame(rhs_data)
         st.dataframe(rhs_df, use_container_width=True)
     else:
         st.info("ℹ️ 当前没有紧约束条件，灵敏度分析显示模型具有较好的稳健性")
-    
+
     # 3. 管理建议
     st.markdown("### 💡 管理建议")
-    
+
     recommendations = sensitivity.get('recommendations', [])
-    
+
     # 添加基于分析的建议
     if 'constraint_analysis' in st.session_state.get('solution', {}):
         constraint_analysis = st.session_state['solution']['constraint_analysis']
-        
+
         # 分析紧约束
         binding_constraints = constraint_analysis.get('binding_constraints', [])
         if binding_constraints:
             recommendations.append(f"发现 {len(binding_constraints)} 个紧约束条件，建议优先扩展这些资源")
             for constraint in binding_constraints:
                 recommendations.append(f"- {constraint}")
-        
+
         # 分析非紧约束
         non_binding_constraints = constraint_analysis.get('non_binding_constraints', [])
         if non_binding_constraints:
             recommendations.append(f"有 {len(non_binding_constraints)} 个约束条件存在松弛，资源配置相对充足")
-    
+
     if recommendations:
         for i, rec in enumerate(recommendations, 1):
             st.markdown(f"**{i}.** {rec}")
@@ -873,9 +930,9 @@ def display_sensitivity_analysis(sensitivity):
 def display_model_explanation():
     """显示模型解释"""
     st.markdown('<div class="section-header">📚 模型解释与算法说明</div>', unsafe_allow_html=True)
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("""
         ### 🎯 数学模型构建
@@ -893,7 +950,7 @@ def display_model_explanation():
         3. **生产约束：** Xₘᵢₙ ≤ X ≤ Xₘₐₓ
         4. **非负约束：** X ≥ 0
         """)
-    
+
     with col2:
         st.markdown("""
         ### ⚡ 求解算法说明
@@ -913,7 +970,7 @@ def display_model_explanation():
         - 确定参数的稳定区间
         - 提供管理决策依据
         """)
-    
+
     st.markdown("""
     ### 🔄 求解步骤详解
     
@@ -945,8 +1002,6 @@ def display_model_explanation():
 
     with st.expander("🔍 查看单纯形法单纯形表迭代", expanded=False):
         st.markdown(SIMPLEX_TABLEAU_HTML, unsafe_allow_html=True)
-
-
 
 
 def display_simplex_iteration_history(iteration_payload):
@@ -1051,8 +1106,11 @@ def main():
     if ML_FEATURES_AVAILABLE:
         init_session_state()
 
+    # 获取当前会话唯一的优化模型实例
+    optimization_model = get_optimization_model()
+
     # 侧边栏参数设置
-    sidebar_parameters()
+    sidebar_parameters(optimization_model)
 
     # 侧边栏机器学习功能导航
     if ML_FEATURES_AVAILABLE:
@@ -1060,7 +1118,7 @@ def main():
 
     # 检查是否在机器学习页面
     if ML_FEATURES_AVAILABLE:
-        is_ml_page = render_ml_page(model)
+        is_ml_page = render_ml_page(optimization_model)
         if is_ml_page:
             # 如果在ML页面，只显示页脚后返回
             st.markdown("---")
@@ -1070,7 +1128,6 @@ def main():
             <p>基于单纯形法和灵敏度分析的企业决策支持工具</p>
             </div>
             """, unsafe_allow_html=True)
-            # 注入 Dify 聊天机器人
             inject_coze_chatbot()
             return
 
@@ -1078,8 +1135,8 @@ def main():
     display_header()
 
     # 主要内容区域
-    display_model_overview()
-    solve_and_display()
+    display_model_overview(optimization_model)
+    solve_and_display(optimization_model)
 
     # 模型解释
     with st.expander("📖 查看模型详细解释", expanded=False):
@@ -1094,8 +1151,9 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # 注入 Dify 聊天机器人（放在页面最后）
+    # 注入聊天机器人（放在页面最后）
     inject_coze_chatbot()
+
 
 if __name__ == "__main__":
     main()
